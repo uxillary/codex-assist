@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from ttkbootstrap import Style
 from openai_helper import send_prompt
 from dotenv import load_dotenv
@@ -10,19 +10,29 @@ load_dotenv()
 # Set up the main app window
 app = tk.Tk()
 app.title("Codex Desktop Assistant")
-app.geometry("700x500")
+app.geometry("700x540")
 
 # Apply modern theme
 style = Style("darkly")
 
-# Prompt frame
+# --- Menu Bar with Settings ---
+def open_settings():
+    messagebox.showinfo("Settings", "This will allow you to set your API key in a future update.")
+
+menu_bar = tk.Menu(app)
+settings_menu = tk.Menu(menu_bar, tearoff=0)
+settings_menu.add_command(label="Set API Key", command=open_settings)
+menu_bar.add_cascade(label="⚙️ Settings", menu=settings_menu)
+app.config(menu=menu_bar)
+
+# --- Prompt Input ---
 prompt_label = ttk.Label(app, text="Your Prompt:")
 prompt_label.pack(pady=(10, 0))
 
 prompt_entry = tk.Text(app, height=6, wrap="word")
 prompt_entry.pack(padx=10, pady=(0, 10), fill="x")
 
-# Task selector
+# --- Task Selector ---
 task_frame = ttk.Frame(app)
 task_frame.pack(padx=10, pady=(0, 10), fill="x")
 
@@ -35,22 +45,19 @@ task_dropdown["values"] = ["Custom", "Explain Code", "Generate Commit Message", 
 task_dropdown.current(0)
 task_dropdown.pack(side="left", padx=(10, 0))
 
-# Output frame
-output_label = ttk.Label(app, text="Response:")
-output_label.pack()
+# --- Status Label ---
+status_var = tk.StringVar()
+status_label = ttk.Label(app, textvariable=status_var)
+status_label.pack(pady=(0, 5))
 
-output_text = tk.Text(app, height=15, wrap="word")
-output_text.pack(padx=10, pady=(0, 10), fill="both", expand=True)
-
-# Scrollbar for output
-scrollbar = ttk.Scrollbar(app, command=output_text.yview)
-scrollbar.pack(side="right", fill="y")
-output_text.config(yscrollcommand=scrollbar.set)
-
-# Button callback
+# --- Ask Button ---
 def generate_response():
     task = task_var.get()
     user_prompt = prompt_entry.get("1.0", tk.END).strip()
+
+    if not user_prompt:
+        status_var.set("⚠️ Please enter a prompt.")
+        return
 
     if task == "Explain Code":
         final_prompt = f"Explain what this code does:\n{user_prompt}"
@@ -62,16 +69,27 @@ def generate_response():
         final_prompt = user_prompt
 
     output_text.delete("1.0", tk.END)
-    output_text.insert(tk.END, "Thinking...\n")
+    status_var.set("💬 Thinking... please wait.")
     app.update()
 
     result = send_prompt(final_prompt)
     output_text.delete("1.0", tk.END)
     output_text.insert(tk.END, result)
+    status_var.set("✅ Done.")
 
-# Generate button
-submit_btn = ttk.Button(app, text="Generate", command=generate_response)
-submit_btn.pack(pady=10)
+ask_btn = ttk.Button(app, text="Ask", command=generate_response)
+ask_btn.pack(pady=(0, 10))
 
-# Run the app
+# --- Output Response ---
+output_label = ttk.Label(app, text="Response:")
+output_label.pack()
+
+output_text = tk.Text(app, height=15, wrap="word")
+output_text.pack(padx=10, pady=(0, 10), fill="both", expand=True)
+
+scrollbar = ttk.Scrollbar(app, command=output_text.yview)
+scrollbar.pack(side="right", fill="y")
+output_text.config(yscrollcommand=scrollbar.set)
+
+# --- Run the App ---
 app.mainloop()
