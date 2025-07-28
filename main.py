@@ -45,10 +45,25 @@ task_dropdown["values"] = ["Custom", "Explain Code", "Generate Commit Message", 
 task_dropdown.current(0)
 task_dropdown.pack(side="left", padx=(10, 0))
 
+# --- GPT Model ---
+model_label = ttk.Label(task_frame, text="Model:")
+model_label.pack(side="left", padx=(20, 0))
+
+model_var = tk.StringVar()
+model_dropdown = ttk.Combobox(task_frame, textvariable=model_var, state="readonly")
+model_dropdown["values"] = ["gpt-3.5-turbo", "gpt-4"]
+model_dropdown.current(0)
+model_dropdown.pack(side="left", padx=(10, 0))
+
 # --- Status Label ---
 status_var = tk.StringVar()
 status_label = ttk.Label(app, textvariable=status_var)
 status_label.pack(pady=(0, 5))
+
+# --- Token Cost Label ---
+cost_var = tk.StringVar()
+cost_label = ttk.Label(app, textvariable=cost_var)
+cost_label.pack(pady=(0, 5))
 
 # --- Ask Button ---
 def generate_response():
@@ -72,10 +87,18 @@ def generate_response():
     status_var.set("💬 Thinking... please wait.")
     app.update()
 
-    result = send_prompt(final_prompt)
+    selected_model = model_var.get()
+    result, usage = send_prompt(final_prompt, model=selected_model)
     output_text.delete("1.0", tk.END)
     output_text.insert(tk.END, result)
     status_var.set("✅ Done.")
+    
+    if usage:
+     from openai_helper import estimate_cost
+     cost = estimate_cost(usage, selected_model)
+     cost_var.set(f"Tokens: {usage.total_tokens} | Est. cost: ${cost:.4f}")
+    else:
+     cost_var.set("⚠️ Token info unavailable.")
 
 ask_btn = ttk.Button(app, text="Ask", command=generate_response)
 ask_btn.pack(pady=(0, 10))
