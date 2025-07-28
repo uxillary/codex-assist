@@ -65,6 +65,15 @@ cost_var = tk.StringVar()
 cost_label = ttk.Label(app, textvariable=cost_var)
 cost_label.pack(pady=(0, 5))
 
+# --- Copy answer text ---
+def copy_response_to_clipboard():
+    content = output_text.get("1.0", tk.END).strip()
+    if content:
+        app.clipboard_clear()
+        app.clipboard_append(content)
+        app.update()
+        status_var.set("✅ Response copied to clipboard.")
+
 # --- Ask Button ---
 def generate_response():
     task = task_var.get()
@@ -102,6 +111,9 @@ def generate_response():
 
 ask_btn = ttk.Button(app, text="Ask", command=generate_response)
 ask_btn.pack(pady=(0, 10))
+
+copy_btn = ttk.Button(app, text="📋 Copy", command=copy_response_to_clipboard)
+copy_btn.pack(pady=(0, 10))
 
 # --- Output Response ---
 output_label = ttk.Label(app, text="Response:")
