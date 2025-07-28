@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from ttkbootstrap import Style
 from openai_helper import send_prompt
 from dotenv import load_dotenv
@@ -53,7 +53,58 @@ model_var = tk.StringVar()
 model_dropdown = ttk.Combobox(task_frame, textvariable=model_var, state="readonly")
 model_dropdown["values"] = ["gpt-3.5-turbo", "gpt-4"]
 model_dropdown.current(0)
+
 model_dropdown.pack(side="left", padx=(10, 0))
+
+# --- File Selector ---
+file_frame = ttk.Frame(app)
+file_frame.pack(padx=10, pady=(0, 10), fill="x")
+
+def open_file():
+    path = filedialog.askopenfilename(
+        filetypes=[("Python", "*.py"), ("Text", "*.txt"), ("All files", "*.*")]
+    )
+    if path:
+        selected_file_var.set(os.path.basename(path))
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                app.file_contents = f.read()
+        except Exception as e:
+            app.file_contents = f"[Error reading file] {e}"
+        file_preview.delete("1.0", tk.END)
+        file_preview.insert(tk.END, app.file_contents)
+    else:
+        selected_file_var.set("No file selected")
+        app.file_contents = ""
+        file_preview.delete("1.0", tk.END)
+
+open_file_btn = ttk.Button(file_frame, text="Open File", command=open_file)
+open_file_btn.pack(side="left")
+
+selected_file_var = tk.StringVar(value="No file selected")
+selected_file_label = ttk.Label(file_frame, textvariable=selected_file_var)
+selected_file_label.pack(side="left", padx=(10, 0))
+
+file_preview_frame = ttk.Frame(app)
+file_preview_frame.pack(padx=10, pady=(0, 10), fill="both", expand=True)
+
+file_preview = tk.Text(file_preview_frame, height=10, wrap="word")
+file_preview.pack(side="left", fill="both", expand=True)
+
+file_scrollbar = ttk.Scrollbar(file_preview_frame, command=file_preview.yview)
+file_scrollbar.pack(side="right", fill="y")
+file_preview.config(yscrollcommand=file_scrollbar.set)
+
+def insert_file_into_prompt():
+    content = getattr(app, "file_contents", "")
+    if content:
+        prompt_entry.insert(tk.END, content)
+        status_var.set("✅ File inserted into prompt.")
+    else:
+        status_var.set("⚠️ No file loaded.")
+
+insert_btn = ttk.Button(app, text="Insert file into prompt", command=insert_file_into_prompt)
+insert_btn.pack(pady=(0, 10))
 
 # --- Status Label ---
 status_var = tk.StringVar()
