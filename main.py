@@ -4,11 +4,11 @@ import time
 import threading
 import queue
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 from ttkbootstrap import Style
 from dotenv import load_dotenv
 
-from openai_helper import send_prompt, get_usage, estimate_cost
+from openai_helper import send_prompt, get_usage, estimate_cost, set_project_dir
 from utils import approx_tokens, file_hash
 
 load_dotenv()
@@ -17,22 +17,33 @@ BASE_DIR = os.path.dirname(__file__)
 STATE_PATH = os.path.join(BASE_DIR, 'state.json')
 SETTINGS_PATH = os.path.join(BASE_DIR, 'settings.json')
 HISTORY_PATH = os.path.join(BASE_DIR, 'history.json')
+PROJECTS_DIR = os.path.join(BASE_DIR, 'codex_projects')
+os.makedirs(PROJECTS_DIR, exist_ok=True)
+
+settings = {
+    'use_project_context': True,
+    'show_prompt_cost': True,
+    'auto_load_last_project': True,
+    'include_history': False,
+    'theme': 'darkly',
+    'last_project': '',
+}
+current_project_dir = ''
+if os.path.exists(SETTINGS_PATH):
+    try:
+        with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+            settings.update(json.load(f))
+    except Exception:
+        pass
 
 app = tk.Tk()
 app.title('Codex Desktop Assistant')
 app.geometry('900x600')
-style = Style('darkly')
+style = Style(settings.get('theme', 'darkly'))
 
 # ----- State -----
 project_root = ''
 context_summary = {}
-settings = {
-    'use_project_context': True,
-    'show_session_short': False,
-    'show_prompt_cost': True,
-    'auto_load_last_project': True,
-    'include_history': False,
-}
 
 
 def load_state():
@@ -51,6 +62,7 @@ def save_state():
         'last_folder': project_root,
         'context_summary': context_summary,
         'use_context': use_context_var.get(),
+        'project_dir': current_project_dir,
     }
     usage = get_usage()
     state['total_tokens'] = usage['total_tokens']
@@ -90,8 +102,6 @@ status_var = tk.StringVar()
 
 
 def _format_tokens(t: int) -> str:
-    if not settings.get('show_session_short'):
-        return str(t)
     if t >= 1_000_000:
         return f"{t/1_000_000:.1f}M"
     if t >= 1_000:
@@ -130,6 +140,103 @@ def save_summary_cache(folder: str, data: dict):
             json.dump(data, f, indent=2)
     except Exception:
         pass
+
+
+def save_project_files():
+    if not current_project_dir:
+        return
+    try:
+        with open(os.path.join(current_project_dir, 'context_summary.json'), 'w', encoding='utf-8') as f:
+            json.dump(context_summary, f, indent=2)
+        with open(os.path.join(current_project_dir, 'settings.json'), 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+        with open(os.path.join(current_project_dir, 'project_summary.txt'), 'w', encoding='utf-8') as f:
+            f.write(f"Files summarized: {len(context_summary)}\n")
+    except Exception:
+        pass
+
+
+def _write_proj_meta(name: str, root_path: str, folder: str):
+    meta_path = os.path.join(folder, f"{name}.codexproj")
+    try:
+        with open(meta_path, 'w', encoding='utf-8') as f:
+            json.dump({'name': name, 'root': root_path}, f, indent=2)
+    except Exception:
+        pass
+
+
+def new_project():
+    name = tk.simpledialog.askstring('New Project', 'Project name:')
+    if not name:
+        return
+    folder = os.path.join(PROJECTS_DIR, name)
+    os.makedirs(folder, exist_ok=True)
+    _write_proj_meta(name, '', folder)
+    global current_project_dir
+    current_project_dir = folder
+    settings['last_project'] = folder
+    save_settings()
+    set_project_dir(folder)
+    status_var.set('🆕 Project created')
+
+def _load_project_file(file_path: str):
+    folder = os.path.dirname(file_path)
+    global current_project_dir, project_root, context_summary
+    current_project_dir = folder
+    settings['last_project'] = folder
+    save_settings()
+    set_project_dir(folder)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+        project_root = meta.get('root', '')
+    except Exception:
+        project_root = ''
+    try:
+        with open(os.path.join(folder, 'context_summary.json'), 'r', encoding='utf-8') as f:
+            context_summary = json.load(f)
+        context_count_label.config(text=f"{len(context_summary)} files summarized")
+    except Exception:
+        context_summary = {}
+    refresh_history_panel()
+    update_usage_display()
+
+    if project_root and os.path.isdir(project_root):
+        status_var.set('🔍 Scanning project...')
+        threading.Thread(target=_scan_thread, args=(project_root,)).start()
+    else:
+        status_var.set('📁 Project loaded')
+
+
+def load_project():
+    file_path = filedialog.askopenfilename(initialdir=PROJECTS_DIR, filetypes=[('Codex Project', '*.codexproj')])
+    if file_path:
+        _load_project_file(file_path)
+
+
+def save_project_as():
+    name = tk.simpledialog.askstring('Save Project As', 'Project name:')
+    if not name:
+        return
+    folder = os.path.join(PROJECTS_DIR, name)
+    os.makedirs(folder, exist_ok=True)
+    global current_project_dir
+    current_project_dir = folder
+    _write_proj_meta(name, project_root, folder)
+    save_project_files()
+    set_project_dir(folder)
+    settings['last_project'] = folder
+    save_settings()
+    status_var.set('💾 Project saved')
+
+
+def open_last_project():
+    last = settings.get('last_project')
+    if settings.get('auto_load_last_project') and last and os.path.isdir(last):
+        for name in os.listdir(last):
+            if name.endswith('.codexproj'):
+                _load_project_file(os.path.join(last, name))
+                break
 
 
 summary_cache = {}
@@ -197,6 +304,7 @@ def _process_progress_queue():
                 load_btn.config(state='normal')
                 ask_btn.config(state='normal')
                 app.config(cursor='arrow')
+                save_project_files()
                 save_state()
                 save_settings()
     except queue.Empty:
@@ -318,61 +426,34 @@ def refresh_history_panel():
     history_text.configure(state='disabled')
 
 
-def open_settings():
-    win = tk.Toplevel(app)
-    win.title('Settings')
-    def apply_main():
-        settings['use_project_context'] = use_context_var.get()
-        settings['include_history'] = include_history_var.get()
-        save_settings()
-        update_usage_display()
-
-    ttk.Checkbutton(win, text='Use project context', variable=use_context_var,
-                    command=apply_main).pack(anchor='w', padx=10, pady=5)
-    ttk.Checkbutton(win, text='Include chat history', variable=include_history_var,
-                    command=apply_main).pack(anchor='w', padx=10, pady=5)
-    short_var = tk.BooleanVar(value=settings['show_session_short'])
-    cost_var = tk.BooleanVar(value=settings['show_prompt_cost'])
-    auto_var = tk.BooleanVar(value=settings['auto_load_last_project'])
-    def apply(var, key):
-        settings[key] = var.get()
-        save_settings()
-        update_usage_display()
-
-    ttk.Checkbutton(win, text='Show session stats in short format', variable=short_var,
-                    command=lambda: apply(short_var, 'show_session_short')).pack(anchor='w', padx=10, pady=5)
-    ttk.Checkbutton(win, text='Show individual prompt cost', variable=cost_var,
-                    command=lambda: apply(cost_var, 'show_prompt_cost')).pack(anchor='w', padx=10, pady=5)
-    ttk.Checkbutton(win, text='Auto-load last project on startup', variable=auto_var,
-                    command=lambda: apply(auto_var, 'auto_load_last_project')).pack(anchor='w', padx=10, pady=5)
 
 
 # ----- UI Layout -----
-main_pane = ttk.PanedWindow(app, orient='horizontal')
-main_pane.pack(fill='both', expand=True)
-left = ttk.Frame(main_pane)
-right = ttk.Frame(main_pane)
-main_pane.add(left, weight=1)
-main_pane.add(right, weight=1)
-
-context_frame = ttk.LabelFrame(left, text='Project Context')
-context_frame.pack(fill='x', padx=10, pady=10)
-load_btn = ttk.Button(context_frame, text='Load Folder', command=choose_folder)
-load_btn.pack(side='left', padx=5, pady=5)
-context_count_label = ttk.Label(context_frame, text='0 files summarized')
+project_frame = ttk.Frame(app)
+project_frame.pack(fill='x', padx=10, pady=5)
+ttk.Button(project_frame, text='New Project', command=new_project).pack(side='left', padx=2)
+ttk.Button(project_frame, text='Load Project', command=load_project).pack(side='left', padx=2)
+ttk.Button(project_frame, text='Save Project As', command=save_project_as).pack(side='left', padx=2)
+load_btn = ttk.Button(project_frame, text='Load Folder', command=choose_folder)
+load_btn.pack(side='left', padx=10)
+context_count_label = ttk.Label(project_frame, text='0 files summarized')
 context_count_label.pack(side='left', padx=10)
-use_context_cb = ttk.Checkbutton(context_frame, text='Use project context', variable=use_context_var)
-use_context_cb.pack(side='left')
 
-prompt_frame = ttk.LabelFrame(left, text='Prompt')
-prompt_frame.pack(fill='both', expand=True, padx=10, pady=(0,10))
+tabs = ttk.Notebook(app)
+tabs.pack(fill='both', expand=True, padx=10, pady=10)
 
-prompt_entry = tk.Text(prompt_frame, height=6, wrap='word')
-prompt_entry.pack(fill='both', expand=True, padx=5, pady=5)
+# ----- Prompt Tab -----
+prompt_tab = ttk.Frame(tabs)
+tabs.add(prompt_tab, text='Prompt')
 
-option_frame = ttk.Frame(prompt_frame)
+prompt_entry = tk.Text(prompt_tab, height=6, wrap='word')
+prompt_entry.pack(side='left', fill='both', expand=True, padx=5, pady=5)
+prompt_scroll = ttk.Scrollbar(prompt_tab, command=prompt_entry.yview)
+prompt_scroll.pack(side='right', fill='y')
+prompt_entry.configure(yscrollcommand=prompt_scroll.set)
+
+option_frame = ttk.Frame(prompt_tab)
 option_frame.pack(fill='x', padx=5, pady=5)
-
 task_var = tk.StringVar(value='Custom')
 task_dropdown = ttk.Combobox(option_frame, textvariable=task_var, state='readonly')
 task_dropdown['values'] = ['Custom', 'Explain Code', 'Generate Commit Message', 'Refactor']
@@ -385,30 +466,57 @@ model_dropdown['values'] = ['gpt-3.5-turbo', 'gpt-4']
 model_dropdown.current(0)
 model_dropdown.pack(side='left', padx=10)
 
-ask_btn = ttk.Button(left, text='Ask', command=generate_response)
+ask_btn = ttk.Button(prompt_tab, text='Ask', command=generate_response)
 ask_btn.pack(pady=5)
-copy_btn = ttk.Button(left, text='📋 Copy', command=lambda: app.clipboard_append(output_text.get('1.0', tk.END)))
-copy_btn.pack(pady=5)
 
-right_tabs = ttk.Notebook(right)
-right_tabs.pack(fill='both', expand=True, padx=10, pady=10)
-
-output_frame = ttk.Frame(right_tabs)
-history_frame = ttk.Frame(right_tabs)
-right_tabs.add(output_frame, text='Response')
-right_tabs.add(history_frame, text='History')
-
-output_text = tk.Text(output_frame, wrap='word')
+# ----- Response Tab -----
+response_tab = ttk.Frame(tabs)
+tabs.add(response_tab, text='Response')
+output_text = tk.Text(response_tab, wrap='word')
 output_text.pack(side='left', fill='both', expand=True)
-output_scroll = ttk.Scrollbar(output_frame, command=output_text.yview)
+output_scroll = ttk.Scrollbar(response_tab, command=output_text.yview)
 output_scroll.pack(side='right', fill='y')
 output_text.configure(yscrollcommand=output_scroll.set)
+copy_btn = ttk.Button(response_tab, text='📋 Copy', command=lambda: app.clipboard_append(output_text.get('1.0', tk.END)))
+copy_btn.pack(pady=5)
 
-history_text = tk.Text(history_frame, wrap='word', state='disabled')
+# ----- History Tab -----
+history_tab = ttk.Frame(tabs)
+tabs.add(history_tab, text='History')
+history_text = tk.Text(history_tab, wrap='word', state='disabled')
 history_text.pack(side='left', fill='both', expand=True)
-history_scroll = ttk.Scrollbar(history_frame, command=history_text.yview)
+history_scroll = ttk.Scrollbar(history_tab, command=history_text.yview)
 history_scroll.pack(side='right', fill='y')
 history_text.configure(yscrollcommand=history_scroll.set)
+
+# ----- Settings Tab -----
+settings_tab = ttk.Frame(tabs)
+tabs.add(settings_tab, text='Settings')
+use_context_cb = ttk.Checkbutton(settings_tab, text='Use project context', variable=use_context_var)
+use_context_cb.pack(anchor='w', padx=10, pady=5)
+history_cb = ttk.Checkbutton(settings_tab, text='Include chat history', variable=include_history_var)
+history_cb.pack(anchor='w', padx=10, pady=5)
+cost_var = tk.BooleanVar(value=settings['show_prompt_cost'])
+auto_var = tk.BooleanVar(value=settings['auto_load_last_project'])
+theme_var = tk.BooleanVar(value=settings.get('theme', 'darkly') == 'darkly')
+
+def apply_setting(var, key, refresh=False):
+    settings[key] = var.get() if not isinstance(var.get(), bool) else var.get()
+    save_settings()
+    if refresh:
+        update_usage_display()
+
+ttk.Checkbutton(settings_tab, text='Show individual prompt cost', variable=cost_var,
+                command=lambda: apply_setting(cost_var, 'show_prompt_cost', True)).pack(anchor='w', padx=10, pady=5)
+ttk.Checkbutton(settings_tab, text='Auto-load last project on startup', variable=auto_var,
+                command=lambda: apply_setting(auto_var, 'auto_load_last_project')).pack(anchor='w', padx=10, pady=5)
+
+def toggle_theme():
+    settings['theme'] = 'darkly' if theme_var.get() else 'flatly'
+    style.theme_use(settings['theme'])
+    save_settings()
+
+ttk.Checkbutton(settings_tab, text='Dark theme', variable=theme_var, command=toggle_theme).pack(anchor='w', padx=10, pady=5)
 
 footer = ttk.Frame(app)
 footer.pack(side='bottom', fill='x')
@@ -417,23 +525,12 @@ usage_label.pack(side='right', padx=10, pady=5)
 status_label = ttk.Label(footer, textvariable=status_var)
 status_label.pack(side='left', padx=10, pady=5)
 
-# menu item for history
-menu = tk.Menu(app)
-menu.add_command(label='🕑 History', command=show_history)
-menu.add_command(label='⚙️ Settings', command=lambda: open_settings())
-app.config(menu=menu)
-
 # ----- Auto load state -----
 state = load_state()
 if state:
     use_context_var.set(state.get('use_context', settings['use_project_context']))
-    last = state.get('last_folder')
-    if settings.get('auto_load_last_project') and last and os.path.isdir(last):
-        load_btn.config(state='disabled')
-        ask_btn.config(state='disabled')
-        app.config(cursor='wait')
-        status_var.set('🔍 Scanning project...')
-        threading.Thread(target=_scan_thread, args=(last,)).start()
+
+open_last_project()
 update_usage_display()
 refresh_history_panel()
 
