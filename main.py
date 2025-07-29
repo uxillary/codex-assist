@@ -3,12 +3,19 @@ import json
 import time
 import threading
 import queue
+import re
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from ttkbootstrap import Style
 from dotenv import load_dotenv
 
-from openai_helper import send_prompt, get_usage, estimate_cost, set_project_dir
+from openai_helper import (
+    send_prompt,
+    get_usage,
+    estimate_cost,
+    set_project_dir,
+    HISTORY_FILE,
+)
 from utils import approx_tokens, file_hash
 
 load_dotenv()
@@ -44,6 +51,7 @@ style = Style(settings.get('theme', 'darkly'))
 # ----- State -----
 project_root = ''
 context_summary = {}
+generated_files = []
 
 
 def load_state():
@@ -118,6 +126,95 @@ def update_usage_display():
         prompt_cost_txt = f"Prompt: ${last_prompt_cost:.4f} | "
     usage_var.set(f"{prompt_cost_txt}Session: {session_tok}t (${u['session_cost']:.4f}) | "
                    f"Total: {total_tok}t (${u['total_cost']:.4f})")
+
+
+def parse_generated_files(text: str):
+    """Extract code blocks marked with '# file:' from a response."""
+    pattern = re.compile(r"#\s*file:\s*(.+?)\n```(?:\w+)?\n(.*?)```", re.DOTALL)
+    files = []
+    for fname, code in pattern.findall(text):
+        files.append({'filename': fname.strip(), 'code': code.strip(), 'mode': 'append'})
+    return files
+
+
+def log_file_action(filename: str, mode: str, code: str) -> None:
+    """Append a file save action to history.json."""
+    try:
+        path = HISTORY_FILE
+        if path.exists():
+            with open(path, 'r', encoding='utf-8') as f:
+                hist = json.load(f)
+        else:
+            hist = []
+        hist.append({
+            'ts': time.time(),
+            'action': 'save_file',
+            'file': filename,
+            'mode': mode,
+            'code': code,
+        })
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(hist, f, indent=2)
+    except Exception:
+        pass
+
+
+def update_generated_files_panel(files):
+    """Display generated files in the UI panel."""
+    for widget in gen_frame.winfo_children():
+        widget.destroy()
+    for item in files:
+        frame = ttk.Frame(gen_frame, padding=5)
+        frame.pack(fill='x', pady=5, padx=5)
+        ttk.Label(frame, text=item['filename']).pack(anchor='w')
+        text = tk.Text(frame, height=min(10, len(item['code'].splitlines())), wrap='none')
+        text.insert('1.0', item['code'])
+        text.configure(state='disabled')
+        text.pack(fill='both', expand=True, pady=2)
+        opt_var = tk.StringVar(value=item.get('mode', 'append'))
+        mode_dd = ttk.Combobox(frame, textvariable=opt_var, state='readonly', width=10)
+        mode_dd['values'] = ['append', 'overwrite']
+        mode_dd.pack(side='left', pady=2)
+
+        def _cb(it=item, var=opt_var):
+            save_generated_file(it, var.get())
+
+        ttk.Button(frame, text='💾 Save File', command=_cb).pack(side='right', padx=5, pady=2)
+
+
+def save_generated_file(item, mode: str):
+    """Write the generated file to disk respecting project folder."""
+    global project_root
+    if not project_root:
+        messagebox.showinfo('Select Folder', 'Please choose a project folder to save files.')
+        choose_folder()
+        if not project_root:
+            status_var.set('⚠️ No folder selected')
+            return
+    path = os.path.join(project_root, item['filename'])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    if os.path.exists(path):
+        action = 'append to' if mode == 'append' else 'overwrite'
+        msg = f'{path} exists. {action.capitalize()}?'
+    else:
+        msg = f'Save new file to {path}?'
+    if not messagebox.askyesno('Confirm Save', msg):
+        return
+
+    try:
+        if os.path.exists(path) and mode == 'append':
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write('\n' + item['code'])
+            status_var.set(f'✅ Appended {item["filename"]}')
+        else:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(item['code'])
+            status_var.set('⚠️ Overwritten' if os.path.exists(path) else '✅ File saved')
+        log_file_action(item['filename'], mode, item['code'])
+    except Exception as e:
+        status_var.set(f'⚠️ Error: {e}')
+
 
 
 # ----- Context Handling -----
@@ -381,10 +478,15 @@ def generate_response():
     app.update()
     model = model_var.get()
     result, usage = send_prompt(final_prompt, model=model, task=task)
-    global last_prompt_cost
+    global last_prompt_cost, generated_files
     last_prompt_cost = estimate_cost(usage, model) if usage else 0.0
     output_text.insert(tk.END, result)
-    status_var.set('✅ Done.')
+    generated_files = parse_generated_files(result)
+    update_generated_files_panel(generated_files)
+    if generated_files:
+        status_var.set('✅ Done. Files detected.')
+    else:
+        status_var.set('✅ Done.')
     update_usage_display()
     refresh_history_panel()
     save_state()
@@ -479,6 +581,22 @@ output_scroll.pack(side='right', fill='y')
 output_text.configure(yscrollcommand=output_scroll.set)
 copy_btn = ttk.Button(response_tab, text='📋 Copy', command=lambda: app.clipboard_append(output_text.get('1.0', tk.END)))
 copy_btn.pack(pady=5)
+
+# ----- Generated Files Tab -----
+generated_tab = ttk.Frame(tabs)
+tabs.add(generated_tab, text='Generated Files')
+gen_canvas = tk.Canvas(generated_tab)
+gen_scroll = ttk.Scrollbar(generated_tab, orient='vertical', command=gen_canvas.yview)
+gen_canvas.configure(yscrollcommand=gen_scroll.set)
+gen_scroll.pack(side='right', fill='y')
+gen_canvas.pack(side='left', fill='both', expand=True)
+gen_frame = ttk.Frame(gen_canvas)
+gen_canvas.create_window((0, 0), window=gen_frame, anchor='nw')
+
+def _update_gen_scroll(_event=None):
+    gen_canvas.configure(scrollregion=gen_canvas.bbox('all'))
+
+gen_frame.bind('<Configure>', _update_gen_scroll)
 
 # ----- History Tab -----
 history_tab = ttk.Frame(tabs)
