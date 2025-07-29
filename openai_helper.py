@@ -1,4 +1,7 @@
 import os
+import json
+import time
+from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -8,21 +11,92 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 DEFAULT_MODEL = "gpt-3.5-turbo"
 MAX_TOKENS = 300
 
-def send_prompt(prompt_text: str, model="gpt-3.5-turbo"):
+BASE_DIR = Path(__file__).resolve().parent
+USAGE_FILE = BASE_DIR / "usage.json"
+HISTORY_FILE = BASE_DIR / "history.json"
+
+
+def _load_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+usage_data = _load_json(USAGE_FILE, {
+    "session_tokens": 0,
+    "session_cost": 0.0,
+    "total_tokens": 0,
+    "total_cost": 0.0,
+})
+
+
+def _save_usage() -> None:
+    try:
+        with open(USAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(usage_data, f, indent=2)
+    except Exception:
+        pass
+
+# reset session on startup after helper is defined
+usage_data["session_tokens"] = 0
+usage_data["session_cost"] = 0.0
+_save_usage()
+
+
+def _record_history(entry: dict) -> None:
+    data = _load_json(HISTORY_FILE, [])
+    data.append(entry)
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def get_usage() -> dict:
+    """Return current usage stats."""
+    return usage_data
+
+def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL):
+    """Send a prompt to OpenAI and record history and usage."""
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a helpful coding assistant."},
-                {"role": "user", "content": prompt_text}
+                {"role": "user", "content": prompt_text},
             ],
             temperature=0.7,
             max_tokens=500,
         )
         message = response.choices[0].message.content.strip()
         usage = response.usage
+        cost = estimate_cost(usage, model)
+        usage_data["session_tokens"] += usage.total_tokens
+        usage_data["session_cost"] += cost
+        usage_data["total_tokens"] += usage.total_tokens
+        usage_data["total_cost"] += cost
+        _save_usage()
+        _record_history({
+            "ts": time.time(),
+            "model": model,
+            "prompt": prompt_text,
+            "response": message,
+            "tokens": usage.total_tokens,
+            "cost": cost,
+        })
         return message, usage
     except Exception as e:
+        _record_history({
+            "ts": time.time(),
+            "model": model,
+            "prompt": prompt_text,
+            "response": f"[ERROR] {str(e)}",
+            "tokens": 0,
+            "cost": 0,
+        })
         return f"[ERROR] {str(e)}", None
 
 def estimate_cost(usage, model):
@@ -36,3 +110,4 @@ def estimate_cost(usage, model):
         # Based on typical 2025 pricing
         return (input_tokens / 1000 * 0.01) + (output_tokens / 1000 * 0.03)
     return 0.0
+
