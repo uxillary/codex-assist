@@ -42,3 +42,4 @@ tk*.db
 dist/
 build/
 *.spec
+settings.json
