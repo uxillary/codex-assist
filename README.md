@@ -9,6 +9,9 @@ A simple Python GUI powered by OpenAI's GPT models. This tool lets you automate 
 - And more (custom prompts supported)
 - Automatic project context summaries
 - Token/cost usage tracking with history
+- Background project scanning with progress
+- Customizable settings & session analytics
+- Built-in chat history panel
 
 ---
 
