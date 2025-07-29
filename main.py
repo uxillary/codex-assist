@@ -2,6 +2,7 @@ import os
 import json
 import time
 import threading
+import queue
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ttkbootstrap import Style
@@ -21,7 +22,6 @@ app = tk.Tk()
 app.title('Codex Desktop Assistant')
 app.geometry('900x600')
 style = Style('darkly')
-load_settings()
 
 # ----- State -----
 project_root = ''
@@ -79,6 +79,10 @@ def save_settings():
         pass
 
 
+# load persisted settings after helper functions are defined
+load_settings()
+
+
 # ----- Usage Display -----
 usage_var = tk.StringVar()
 last_prompt_cost = 0.0
@@ -129,6 +133,7 @@ def save_summary_cache(folder: str, data: dict):
 
 
 summary_cache = {}
+progress_queue = queue.Queue()
 
 
 def summarize_file(path: str) -> str:
@@ -177,7 +182,15 @@ def scan_folder(folder: str, progress=None):
 
 def _scan_thread(folder: str):
     def progress(count, done=False):
-        def _update():
+        progress_queue.put((count, done))
+
+    scan_folder(folder, progress)
+
+
+def _process_progress_queue():
+    try:
+        while True:
+            count, done = progress_queue.get_nowait()
             context_count_label.config(text=f"{count} files summarized")
             if done:
                 status_var.set('✅ Project loaded')
@@ -186,9 +199,9 @@ def _scan_thread(folder: str):
                 app.config(cursor='arrow')
                 save_state()
                 save_settings()
-        app.after(0, _update)
-
-    scan_folder(folder, progress)
+    except queue.Empty:
+        pass
+    app.after(100, _process_progress_queue)
 
 
 def choose_folder():
@@ -283,8 +296,8 @@ def show_history():
     txt.pack(fill='both', expand=True)
     for item in data[-100:]:
         ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item['ts']))
-        line = (f"[{ts}] {item['model']} {item['tokens']}t (${item['cost']:.4f})\n"
-                f"Prompt: {item['prompt'][:200]}\nResponse: {item['response'][:200]}\n\n")
+        line = (f"[{ts}] {item.get('model', '')} {item.get('tokens', 0)}t (${item.get('cost', 0):.4f})\n"
+                f"Prompt: {item.get('prompt', '')[:200]}\nResponse: {item.get('response', '')[:200]}\n\n")
         txt.insert(tk.END, line)
     txt.configure(state='disabled')
 
@@ -299,7 +312,8 @@ def refresh_history_panel():
     history_text.delete('1.0', tk.END)
     for item in data[-50:]:
         ts = time.strftime('%H:%M:%S', time.localtime(item['ts']))
-        line = f"[{ts}] {item['task']} -> {item['model']}\n{item['response']}\n\n"
+        task = item.get('task', 'N/A')
+        line = f"[{ts}] {task} -> {item.get('model', '')}\n{item.get('response', '')}\n\n"
         history_text.insert(tk.END, line)
     history_text.configure(state='disabled')
 
@@ -423,4 +437,5 @@ if state:
 update_usage_display()
 refresh_history_panel()
 
+app.after(100, _process_progress_queue)
 app.mainloop()
