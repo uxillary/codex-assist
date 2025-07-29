@@ -59,7 +59,7 @@ def get_usage() -> dict:
     """Return current usage stats."""
     return usage_data
 
-def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
+def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL):
     """Send a prompt to OpenAI and record history and usage."""
     try:
         response = client.chat.completions.create(
@@ -82,7 +82,6 @@ def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
         _record_history({
             "ts": time.time(),
             "model": model,
-            "task": task,
             "prompt": prompt_text,
             "response": message,
             "tokens": usage.total_tokens,
@@ -93,7 +92,6 @@ def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
         _record_history({
             "ts": time.time(),
             "model": model,
-            "task": task,
             "prompt": prompt_text,
             "response": f"[ERROR] {str(e)}",
             "tokens": 0,
