@@ -7,6 +7,8 @@ A simple Python GUI powered by OpenAI's GPT models. This tool lets you automate 
 - Refactoring snippets
 - Creating PR instructions
 - And more (custom prompts supported)
+- Automatic project context summaries
+- Token/cost usage tracking with history
 
 ---
 
