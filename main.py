@@ -1,4 +1,5 @@
 import os
+import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ttkbootstrap import Style
@@ -62,16 +63,28 @@ model_dropdown["values"] = ["gpt-3.5-turbo", "gpt-4"]
 model_dropdown.current(0)
 model_dropdown.pack(side="left", padx=(10, 0))
 
-# === Files Section ===
-files_frame = ttk.LabelFrame(left_frame, text="Project Files")
-files_frame.pack(fill="both", expand=True, padx=10, pady=(0,10))
+# === Project Context Section ===
+context_frame = ttk.LabelFrame(left_frame, text="Project Context")
+context_frame.pack(fill="both", expand=True, padx=10, pady=(0,10))
 
-load_btn = ttk.Button(files_frame, text="Load Project Folder")
-load_btn.pack(pady=5)
+context_controls = ttk.Frame(context_frame)
+context_controls.pack(fill="x", pady=5)
+
+# create controls
+load_btn = ttk.Button(context_controls, text="Load Project Folder")
+load_btn.pack(side="left")
+
+context_count_label = ttk.Label(context_controls, text="0 files")
+context_count_label.pack(side="left", padx=10)
+
+use_context_var = tk.BooleanVar(value=True)
+use_context_cb = ttk.Checkbutton(context_controls, text="Use project context", variable=use_context_var)
+use_context_cb.pack(side="left")
 
 # Scrollable list of files with checkboxes
-files_canvas = tk.Canvas(files_frame, highlightthickness=0)
-files_scroll = ttk.Scrollbar(files_frame, orient="vertical", command=files_canvas.yview)
+
+files_canvas = tk.Canvas(context_frame, highlightthickness=0)
+files_scroll = ttk.Scrollbar(context_frame, orient="vertical", command=files_canvas.yview)
 files_list_container = ttk.Frame(files_canvas)
 files_list_container.bind(
     "<Configure>", lambda e: files_canvas.configure(scrollregion=files_canvas.bbox("all"))
@@ -83,9 +96,10 @@ files_scroll.pack(side="right", fill="y")
 
 file_vars = {}
 project_root = ""
+context_summary = {}
 
 # Preview area
-preview_frame = ttk.LabelFrame(files_frame, text="Preview")
+preview_frame = ttk.LabelFrame(context_frame, text="Preview")
 preview_frame.pack(fill="both", expand=True, padx=5, pady=5)
 preview_text = tk.Text(preview_frame, height=10, wrap="word")
 preview_text.pack(side="left", fill="both", expand=True)
@@ -107,8 +121,52 @@ def preview_file(path):
         preview_text.insert(tk.END, "\n... (truncated)")
 
 
+def approx_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
+
+
+def update_context_count():
+    count = sum(1 for v in file_vars.values() if v.get())
+    context_count_label.config(text=f"{count} files")
+
+
+def summarize_file(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+    except Exception as e:
+        return f"[Error reading file] {e}"
+    if len(content) > 15000:
+        content = content[:15000]
+    prompt = f"Summarize the purpose of this file in 1–2 sentences:\n\n{content}"
+    summary, _ = send_prompt(prompt, model=model_var.get())
+    return summary.strip()
+
+
+def save_context_cache(folder: str):
+    cache_path = os.path.join(folder, "project_context.json")
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(context_summary, f, indent=2)
+    except Exception:
+        pass
+
+
+def load_context_cache(folder: str):
+    cache_path = os.path.join(folder, "project_context.json")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return None
+
+
 def load_folder():
-    global project_root
+    global project_root, context_summary
     folder = filedialog.askdirectory()
     if not folder:
         return
@@ -117,6 +175,9 @@ def load_folder():
     for child in files_list_container.winfo_children():
         child.destroy()
     file_vars.clear()
+    context_summary = load_context_cache(folder) or {}
+    status_var.set("🔍 Scanning project...")
+    app.update()
     for root_dir, dirs, files in os.walk(folder):
         for name in files:
             if not name.lower().endswith((".py", ".md", ".txt", ".json")):
@@ -128,34 +189,21 @@ def load_folder():
             except OSError:
                 continue
             rel_path = os.path.relpath(path, folder)
-            var = tk.BooleanVar()
+            var = tk.BooleanVar(value=True)
             cb = ttk.Checkbutton(files_list_container, text=rel_path, variable=var,
                                  command=lambda p=path: preview_file(p))
             cb.pack(anchor="w")
             file_vars[path] = var
+            var.trace_add("write", lambda *args: update_context_count())
+            if rel_path not in context_summary:
+                summary = summarize_file(path)
+                context_summary[rel_path] = summary
     preview_text.delete("1.0", tk.END)
+    save_context_cache(folder)
+    update_context_count()
+    status_var.set("✅ Project loaded")
 
 load_btn.configure(command=load_folder)
-
-
-def insert_selected_files():
-    for path, var in file_vars.items():
-        if var.get():
-            try:
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-            except Exception as e:
-                content = f"[Error reading file] {e}"
-            label = os.path.relpath(path, project_root) if project_root else os.path.basename(path)
-            if len(content) > 15000:
-                summary_prompt = f"Summarize this file:\n{content[:15000]}"
-                summary, _ = send_prompt(summary_prompt, model=model_var.get())
-                content = summary
-                label = f"Summary of {label}"
-            prompt_entry.insert(tk.END, f"\n# {label}\n{content}\n")
-
-insert_btn = ttk.Button(files_frame, text="Insert Selected Files Into Prompt", command=insert_selected_files)
-insert_btn.pack(pady=5)
 
 # === Status and Controls ===
 status_var = tk.StringVar()
@@ -176,6 +224,28 @@ def copy_response_to_clipboard():
         status_var.set("✅ Response copied to clipboard.")
 
 
+def get_contextualized_prompt(user_prompt: str) -> str:
+    if not use_context_var.get() or not context_summary:
+        return user_prompt
+    entries = []
+    token_total = 0
+    for path, var in file_vars.items():
+        if not var.get():
+            continue
+        rel = os.path.relpath(path, project_root) if project_root else path
+        summary = context_summary.get(rel)
+        if not summary:
+            continue
+        tokens = approx_tokens(rel) + approx_tokens(summary)
+        if token_total + tokens > 3000:
+            messagebox.showwarning("Context truncated", "Context exceeds 3000 tokens. Truncating to top files.")
+            break
+        token_total += tokens
+        entries.append(f"{rel}\n{summary}")
+    context_text = "\n\n".join(entries)
+    return f"{context_text}\n\n{user_prompt}" if context_text else user_prompt
+
+
 def generate_response():
     task = task_var.get()
     user_prompt = prompt_entry.get("1.0", tk.END).strip()
@@ -183,13 +253,14 @@ def generate_response():
         status_var.set("⚠️ Please enter a prompt.")
         return
     if task == "Explain Code":
-        final_prompt = f"Explain what this code does:\n{user_prompt}"
+        base_prompt = f"Explain what this code does:\n{user_prompt}"
     elif task == "Generate Commit Message":
-        final_prompt = f"Write a git commit message for the following change:\n{user_prompt}"
+        base_prompt = f"Write a git commit message for the following change:\n{user_prompt}"
     elif task == "Refactor":
-        final_prompt = f"Refactor this code and improve readability:\n{user_prompt}"
+        base_prompt = f"Refactor this code and improve readability:\n{user_prompt}"
     else:
-        final_prompt = user_prompt
+        base_prompt = user_prompt
+    final_prompt = get_contextualized_prompt(base_prompt)
     output_text.delete("1.0", tk.END)
     status_var.set("💬 Thinking... please wait.")
     app.update()
@@ -210,6 +281,30 @@ ask_btn.pack(pady=(0,10))
 
 copy_btn = ttk.Button(left_frame, text="📋 Copy", command=copy_response_to_clipboard)
 copy_btn.pack(pady=(0,10))
+
+
+def summarize_project():
+    if not context_summary:
+        messagebox.showinfo("No Project", "Load a project folder first.")
+        return
+    summaries = "\n\n".join(f"{name}\n{summary}" for name, summary in context_summary.items())
+    prompt = f"What is the purpose of this project based on the following files?\n\n{summaries}"
+    output_text.delete("1.0", tk.END)
+    status_var.set("💬 Thinking... please wait.")
+    app.update()
+    selected_model = model_var.get()
+    result, usage = send_prompt(prompt, model=selected_model)
+    output_text.insert(tk.END, result)
+    status_var.set("✅ Done.")
+    if usage:
+        from openai_helper import estimate_cost
+        cost = estimate_cost(usage, selected_model)
+        cost_var.set(f"Tokens: {usage.total_tokens} | Est. cost: ${cost:.4f}")
+    else:
+        cost_var.set("⚠️ Token info unavailable.")
+
+summarize_btn = ttk.Button(left_frame, text="Summarize Project", command=summarize_project)
+summarize_btn.pack(pady=(0,10))
 
 # === Output Section ===
 output_frame = ttk.LabelFrame(right_frame, text="Response")
