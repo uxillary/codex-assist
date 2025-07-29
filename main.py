@@ -2,6 +2,7 @@ import os
 import json
 import time
 import threading
+import queue
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ttkbootstrap import Style
@@ -33,6 +34,9 @@ settings = {
     'auto_load_last_project': True,
     'include_history': False,
 }
+
+# queue for cross-thread UI updates
+progress_queue = queue.Queue()
 
 
 def load_state():
@@ -177,7 +181,16 @@ def scan_folder(folder: str, progress=None):
 
 def _scan_thread(folder: str):
     def progress(count, done=False):
-        def _update():
+        progress_queue.put((count, done))
+
+    scan_folder(folder, progress)
+
+
+def process_progress_queue():
+    """Update UI with progress from background thread."""
+    try:
+        while True:
+            count, done = progress_queue.get_nowait()
             context_count_label.config(text=f"{count} files summarized")
             if done:
                 status_var.set('✅ Project loaded')
@@ -186,9 +199,9 @@ def _scan_thread(folder: str):
                 app.config(cursor='arrow')
                 save_state()
                 save_settings()
-        app.after(0, _update)
-
-    scan_folder(folder, progress)
+    except queue.Empty:
+        pass
+    app.after(100, process_progress_queue)
 
 
 def choose_folder():
@@ -298,8 +311,11 @@ def refresh_history_panel():
     history_text.configure(state='normal')
     history_text.delete('1.0', tk.END)
     for item in data[-50:]:
-        ts = time.strftime('%H:%M:%S', time.localtime(item['ts']))
-        line = f"[{ts}] {item['task']} -> {item['model']}\n{item['response']}\n\n"
+        ts = time.strftime('%H:%M:%S', time.localtime(item.get('ts', 0)))
+        task = item.get('task', '')
+        model = item.get('model', '')
+        resp = item.get('response', '')
+        line = f"[{ts}] {task} -> {model}\n{resp}\n\n"
         history_text.insert(tk.END, line)
     history_text.configure(state='disabled')
 
@@ -422,5 +438,6 @@ if state:
         threading.Thread(target=_scan_thread, args=(last,)).start()
 update_usage_display()
 refresh_history_panel()
+process_progress_queue()
 
 app.mainloop()
