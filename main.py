@@ -531,12 +531,12 @@ def refresh_history_panel():
 
 
 # ----- UI Layout -----
-project_frame = ttk.Frame(app)
-project_frame.pack(fill='x', padx=10, pady=5)
-ttk.Button(project_frame, text='New Project', command=new_project).pack(side='left', padx=2)
-ttk.Button(project_frame, text='Load Project', command=load_project).pack(side='left', padx=2)
-ttk.Button(project_frame, text='Save Project As', command=save_project_as).pack(side='left', padx=2)
-load_btn = ttk.Button(project_frame, text='Load Folder', command=choose_folder)
+project_frame = ttk.LabelFrame(app, text='Project Controls', padding=10)
+project_frame.pack(fill='x', padx=10, pady=10)
+ttk.Button(project_frame, text='🆕 New Project', command=new_project).pack(side='left', padx=2)
+ttk.Button(project_frame, text='📂 Load Project', command=load_project).pack(side='left', padx=2)
+ttk.Button(project_frame, text='💾 Save Project As', command=save_project_as).pack(side='left', padx=2)
+load_btn = ttk.Button(project_frame, text='🗂️ Load Folder', command=choose_folder)
 load_btn.pack(side='left', padx=10)
 context_count_label = ttk.Label(project_frame, text='0 files summarized')
 context_count_label.pack(side='left', padx=10)
@@ -545,7 +545,7 @@ tabs = ttk.Notebook(app)
 tabs.pack(fill='both', expand=True, padx=10, pady=10)
 
 # ----- Prompt Tab -----
-prompt_tab = ttk.Frame(tabs)
+prompt_tab = ttk.Frame(tabs, padding=10)
 tabs.add(prompt_tab, text='Prompt')
 
 prompt_entry = tk.Text(prompt_tab, height=6, wrap='word')
@@ -554,8 +554,8 @@ prompt_scroll = ttk.Scrollbar(prompt_tab, command=prompt_entry.yview)
 prompt_scroll.pack(side='right', fill='y')
 prompt_entry.configure(yscrollcommand=prompt_scroll.set)
 
-option_frame = ttk.Frame(prompt_tab)
-option_frame.pack(fill='x', padx=5, pady=5)
+option_frame = ttk.Frame(prompt_tab, padding=10)
+option_frame.pack(fill='x')
 task_var = tk.StringVar(value='Custom')
 task_dropdown = ttk.Combobox(option_frame, textvariable=task_var, state='readonly')
 task_dropdown['values'] = ['Custom', 'Explain Code', 'Generate Commit Message', 'Refactor']
@@ -568,22 +568,24 @@ model_dropdown['values'] = ['gpt-3.5-turbo', 'gpt-4']
 model_dropdown.current(0)
 model_dropdown.pack(side='left', padx=10)
 
-ask_btn = ttk.Button(prompt_tab, text='Ask', command=generate_response)
-ask_btn.pack(pady=5)
+ask_btn = ttk.Button(option_frame, text='🤖 Ask', command=generate_response)
+ask_btn.pack(side='left', padx=10)
 
 # ----- Response Tab -----
-response_tab = ttk.Frame(tabs)
+response_tab = ttk.Frame(tabs, padding=10)
 tabs.add(response_tab, text='Response')
-output_text = tk.Text(response_tab, wrap='word')
+response_frame = ttk.Frame(response_tab)
+response_frame.pack(fill='both', expand=True)
+output_text = tk.Text(response_frame, wrap='word')
 output_text.pack(side='left', fill='both', expand=True)
-output_scroll = ttk.Scrollbar(response_tab, command=output_text.yview)
+output_scroll = ttk.Scrollbar(response_frame, command=output_text.yview)
 output_scroll.pack(side='right', fill='y')
 output_text.configure(yscrollcommand=output_scroll.set)
 copy_btn = ttk.Button(response_tab, text='📋 Copy', command=lambda: app.clipboard_append(output_text.get('1.0', tk.END)))
-copy_btn.pack(pady=5)
+copy_btn.pack(pady=5, anchor='e')
 
 # ----- Generated Files Tab -----
-generated_tab = ttk.Frame(tabs)
+generated_tab = ttk.Frame(tabs, padding=10)
 tabs.add(generated_tab, text='Generated Files')
 gen_canvas = tk.Canvas(generated_tab)
 gen_scroll = ttk.Scrollbar(generated_tab, orient='vertical', command=gen_canvas.yview)
@@ -599,7 +601,7 @@ def _update_gen_scroll(_event=None):
 gen_frame.bind('<Configure>', _update_gen_scroll)
 
 # ----- History Tab -----
-history_tab = ttk.Frame(tabs)
+history_tab = ttk.Frame(tabs, padding=10)
 tabs.add(history_tab, text='History')
 history_text = tk.Text(history_tab, wrap='word', state='disabled')
 history_text.pack(side='left', fill='both', expand=True)
@@ -608,7 +610,7 @@ history_scroll.pack(side='right', fill='y')
 history_text.configure(yscrollcommand=history_scroll.set)
 
 # ----- Settings Tab -----
-settings_tab = ttk.Frame(tabs)
+settings_tab = ttk.Frame(tabs, padding=10)
 tabs.add(settings_tab, text='Settings')
 use_context_cb = ttk.Checkbutton(settings_tab, text='Use project context', variable=use_context_var)
 use_context_cb.pack(anchor='w', padx=10, pady=5)
@@ -616,10 +618,10 @@ history_cb = ttk.Checkbutton(settings_tab, text='Include chat history', variable
 history_cb.pack(anchor='w', padx=10, pady=5)
 cost_var = tk.BooleanVar(value=settings['show_prompt_cost'])
 auto_var = tk.BooleanVar(value=settings['auto_load_last_project'])
-theme_var = tk.BooleanVar(value=settings.get('theme', 'darkly') == 'darkly')
+theme_choice = tk.StringVar(value=settings.get('theme', 'darkly'))
 
 def apply_setting(var, key, refresh=False):
-    settings[key] = var.get() if not isinstance(var.get(), bool) else var.get()
+    settings[key] = var.get()
     save_settings()
     if refresh:
         update_usage_display()
@@ -629,14 +631,18 @@ ttk.Checkbutton(settings_tab, text='Show individual prompt cost', variable=cost_
 ttk.Checkbutton(settings_tab, text='Auto-load last project on startup', variable=auto_var,
                 command=lambda: apply_setting(auto_var, 'auto_load_last_project')).pack(anchor='w', padx=10, pady=5)
 
-def toggle_theme():
-    settings['theme'] = 'darkly' if theme_var.get() else 'flatly'
-    style.theme_use(settings['theme'])
+theme_combo = ttk.Combobox(settings_tab, textvariable=theme_choice, state='readonly', width=12)
+theme_combo['values'] = ['darkly', 'flatly']
+theme_combo.pack(anchor='w', padx=10, pady=5)
+
+def change_theme(*_):
+    style.theme_use(theme_choice.get())
+    settings['theme'] = theme_choice.get()
     save_settings()
 
-ttk.Checkbutton(settings_tab, text='Dark theme', variable=theme_var, command=toggle_theme).pack(anchor='w', padx=10, pady=5)
+theme_choice.trace_add('write', change_theme)
 
-footer = ttk.Frame(app)
+footer = ttk.Frame(app, padding=5)
 footer.pack(side='bottom', fill='x')
 usage_label = ttk.Label(footer, textvariable=usage_var)
 usage_label.pack(side='right', padx=10, pady=5)
