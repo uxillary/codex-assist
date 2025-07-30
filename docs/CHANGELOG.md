@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 - Initial creation of CHANGELOG
+- Modernized UI with emoji buttons, label frames, and theme selector
 
 ## [0.1.0] - 2025-07-29
 ### Added
