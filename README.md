@@ -75,3 +75,9 @@ MIT — Free to use, modify, and distribute.
 ## 🙌 Contributing
 
 Pull requests welcome! You can fork the repo, make changes, and open a PR with improvements or new features.
+
+---
+
+## 📜 Changelog
+
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for a history of notable changes. Please update this file with a short note whenever you add or modify features.
