@@ -85,6 +85,8 @@ def get_usage() -> dict:
 
 def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
     """Send a prompt to OpenAI and record history and usage."""
+    if len(prompt_text) > 10_000:
+        return "[ERROR] Prompt too long. Try disabling project context.", None
     try:
         response = client.chat.completions.create(
             model=model,
