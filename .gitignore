@@ -43,3 +43,6 @@ dist/
 build/
 *.spec
 settings.json
+codex_projects/goblin/context_summary.json
+codex_projects/goblin/goblin.codexproj
+codex_projects/goblin/project_summary.txt
