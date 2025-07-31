@@ -444,8 +444,6 @@ def _var_changed(name, index, mode, key, var):
 
 use_context_var.trace_add('write', lambda *a: _var_changed(*a, key='use_project_context', var=use_context_var))
 include_history_var.trace_add('write', lambda *a: _var_changed(*a, key='include_history', var=include_history_var))
-use_context_var.trace_add('write', update_token_estimate)
-include_history_var.trace_add('write', update_token_estimate)
 
 
 def build_prompt(user_prompt: str) -> tuple[str, bool]:
@@ -614,6 +612,8 @@ def update_token_estimate(_event=None):
         token_var.set(f"Estimated prompt tokens: {tokens}")
 
 theme_choice.trace_add('write', change_theme)
+use_context_var.trace_add('write', update_token_estimate)
+include_history_var.trace_add('write', update_token_estimate)
 
 main_frame = ttk.Frame(app)
 main_frame.pack(fill='both', expand=True, padx=10, pady=10)
