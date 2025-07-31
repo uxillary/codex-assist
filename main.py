@@ -444,20 +444,29 @@ def _var_changed(name, index, mode, key, var):
 
 use_context_var.trace_add('write', lambda *a: _var_changed(*a, key='use_project_context', var=use_context_var))
 include_history_var.trace_add('write', lambda *a: _var_changed(*a, key='include_history', var=include_history_var))
+use_context_var.trace_add('write', update_token_estimate)
+include_history_var.trace_add('write', update_token_estimate)
 
 
-def build_prompt(user_prompt: str) -> str:
+def build_prompt(user_prompt: str) -> tuple[str, bool]:
     parts = []
     token_total = 0
+    char_total = 0
+    trimmed = False
     if use_context_var.get() and context_summary:
         for rel, summary in context_summary.items():
-            tokens = approx_tokens(rel) + approx_tokens(summary)
-            if token_total + tokens > 3000:
+            entry = f"{rel}: {summary}"
+            tokens = approx_tokens(entry)
+            if token_total + tokens > 3000 or char_total + len(entry) > 10_000:
+                trimmed = True
                 break
             token_total += tokens
-            parts.append(f"{rel}: {summary}")
+            char_total += len(entry)
+            parts.append(entry)
         if parts:
             parts = ['context'] + parts
+        if trimmed:
+            parts.append('Context trimmed to fit within limits.')
     if include_history_var.get():
         try:
             with open(HISTORY_PATH, 'r', encoding='utf-8') as f:
@@ -468,7 +477,7 @@ def build_prompt(user_prompt: str) -> str:
             text = f"User: {item['prompt']}\nAssistant: {item['response']}"
             parts.append(text)
     parts.append(user_prompt)
-    return '\n\n'.join(parts)
+    return '\n\n'.join(parts), trimmed
 
 
 def generate_response():
@@ -485,12 +494,21 @@ def generate_response():
         base_prompt = f"Refactor this code and improve readability:\n{user_prompt}"
     else:
         base_prompt = user_prompt
-    final_prompt = build_prompt(base_prompt)
+    final_prompt, trimmed = build_prompt(base_prompt)
     output_text.delete('1.0', tk.END)
-    status_var.set('💬 Thinking... please wait.')
+    tok_count = approx_tokens(final_prompt)
+    if tok_count >= 1000:
+        token_var.set(f"Estimated prompt tokens: {tok_count/1000:.1f}k")
+    else:
+        token_var.set(f"Estimated prompt tokens: {tok_count}")
+    if trimmed:
+        status_var.set('⚠️ Context trimmed to fit within limits.')
+    else:
+        status_var.set('💬 Thinking... please wait.')
     app.update()
     model = model_var.get()
     result, usage = send_prompt(final_prompt, model=model, task=task)
+    update_token_estimate()
     global last_prompt_cost, generated_files
     last_prompt_cost = estimate_cost(usage, model) if usage else 0.0
     output_text.insert(tk.END, result)
@@ -586,14 +604,29 @@ def apply_setting(var, key, refresh=False):
     if refresh:
         update_usage_display()
 
+def update_token_estimate(_event=None):
+    prompt = prompt_entry.get('1.0', tk.END).strip()
+    est_prompt, _ = build_prompt(prompt)
+    tokens = approx_tokens(est_prompt)
+    if tokens >= 1000:
+        token_var.set(f"Estimated prompt tokens: {tokens/1000:.1f}k")
+    else:
+        token_var.set(f"Estimated prompt tokens: {tokens}")
+
 theme_choice.trace_add('write', change_theme)
 
 main_frame = ttk.Frame(app)
 main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+content_pane = ttk.Panedwindow(main_frame, orient='horizontal')
+content_pane.pack(fill='both', expand=True)
+left_panel = ttk.Frame(content_pane)
+content_pane.add(left_panel, weight=3)
+right_tabs = ttk.Notebook(content_pane)
+content_pane.add(right_tabs, weight=1)
 
 # ----- Prompt Area -----
-prompt_frame = ttk.LabelFrame(main_frame, text='Prompt', padding=10)
-prompt_frame.pack(fill='both', expand=True)
+prompt_frame = ttk.LabelFrame(left_panel, text='Prompt', padding=10)
+prompt_frame.pack(fill='x')
 
 prompt_entry = tk.Text(prompt_frame, height=6, wrap='word')
 prompt_entry.pack(fill='both', expand=True, padx=5, pady=5)
@@ -618,11 +651,17 @@ model_dropdown.pack(side='left', padx=10)
 ask_btn = ttk.Button(option_frame, text='🤖 Ask', command=generate_response)
 ask_btn.pack(side='left', padx=10)
 
+token_var = tk.StringVar(value='Estimated prompt tokens: 0')
+token_label = ttk.Label(option_frame, textvariable=token_var)
+token_label.pack(side='right')
+prompt_entry.bind('<KeyRelease>', update_token_estimate)
+update_token_estimate()
+
 # ----- Response Area -----
-response_frame = ttk.LabelFrame(main_frame, text='Response', padding=10)
-response_frame.pack(fill='both', expand=True, pady=(10, 0))
-output_text = tk.Text(response_frame, wrap='word')
-output_text.pack(side='left', fill='both', expand=True)
+response_frame = ttk.LabelFrame(left_panel, text='Response', padding=10)
+response_frame.pack(fill='x', pady=(10, 0))
+output_text = tk.Text(response_frame, wrap='word', height=10)
+output_text.pack(side='left', fill='both', expand=False)
 output_scroll = ttk.Scrollbar(response_frame, command=output_text.yview)
 output_scroll.pack(side='right', fill='y')
 output_text.configure(yscrollcommand=output_scroll.set)
@@ -630,11 +669,8 @@ copy_btn = ttk.Button(response_frame, text='📋 Copy', command=lambda: app.clip
 copy_btn.pack(pady=5, anchor='e')
 
 # ----- Extra Tabs -----
-tabs = ttk.Notebook(main_frame)
-tabs.pack(fill='both', expand=True, pady=(10, 0))
-
-generated_tab = ttk.Frame(tabs, padding=10)
-tabs.add(generated_tab, text='Generated Files')
+generated_tab = ttk.Frame(right_tabs, padding=10)
+right_tabs.add(generated_tab, text='Generated Files')
 gen_canvas = tk.Canvas(generated_tab)
 gen_scroll = ttk.Scrollbar(generated_tab, orient='vertical', command=gen_canvas.yview)
 gen_canvas.configure(yscrollcommand=gen_scroll.set)
@@ -649,8 +685,8 @@ def _update_gen_scroll(_event=None):
 gen_frame.bind('<Configure>', _update_gen_scroll)
 
 # ----- History Tab -----
-history_tab = ttk.Frame(tabs, padding=10)
-tabs.add(history_tab, text='History')
+history_tab = ttk.Frame(right_tabs, padding=10)
+right_tabs.add(history_tab, text='History')
 history_text = tk.Text(history_tab, wrap='word', state='disabled')
 history_text.pack(side='left', fill='both', expand=True)
 history_scroll = ttk.Scrollbar(history_tab, command=history_text.yview)
