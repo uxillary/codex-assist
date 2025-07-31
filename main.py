@@ -129,11 +129,21 @@ def update_usage_display():
 
 
 def parse_generated_files(text: str):
-    """Extract code blocks marked with '# file:' from a response."""
-    pattern = re.compile(r"#\s*file:\s*(.+?)\n```(?:\w+)?\n(.*?)```", re.DOTALL)
+    """Extract code blocks and associated file names from a response."""
+    pattern = re.compile(
+        r"(?:^|\n)(?:[#>]*\s*(?:file(?:name)?\s*:)?\s*)?([\w./-]+\.[\w\d]+)\s*\n```(?:\w+)?\n(.*?)```",
+        re.DOTALL,
+    )
     files = []
-    for fname, code in pattern.findall(text):
-        files.append({'filename': fname.strip(), 'code': code.strip(), 'mode': 'append'})
+    for idx, (fname, code) in enumerate(pattern.findall(text), 1):
+        base, ext = os.path.splitext(os.path.basename(fname.strip()))
+        numbered = f"{base}_{idx:03}{ext}"
+        files.append({
+            'filename': numbered,
+            'original': fname.strip(),
+            'code': code.strip(),
+            'mode': 'append',
+        })
     return files
 
 
@@ -166,7 +176,10 @@ def update_generated_files_panel(files):
     for item in files:
         frame = ttk.Frame(gen_frame, padding=5)
         frame.pack(fill='x', pady=5, padx=5)
-        ttk.Label(frame, text=item['filename']).pack(anchor='w')
+        label_text = item['filename']
+        if item.get('original'):
+            label_text += f" (from {item['original']})"
+        ttk.Label(frame, text=label_text).pack(anchor='w')
         text = tk.Text(frame, height=min(10, len(item['code'].splitlines())), wrap='none')
         text.insert('1.0', item['code'])
         text.configure(state='disabled')
@@ -540,21 +553,55 @@ load_btn = ttk.Button(project_frame, text='🗂️ Load Folder', command=choose_
 load_btn.pack(side='left', padx=10)
 context_count_label = ttk.Label(project_frame, text='0 files summarized')
 context_count_label.pack(side='left', padx=10)
+settings_btn = ttk.Button(project_frame, text='⚙️')
+settings_btn.pack(side='right')
 
-tabs = ttk.Notebook(app)
-tabs.pack(fill='both', expand=True, padx=10, pady=10)
+settings_menu = tk.Menu(app, tearoff=False)
+settings_menu.add_checkbutton(label='Use project context', variable=use_context_var)
+settings_menu.add_checkbutton(label='Include chat history', variable=include_history_var)
+cost_var = tk.BooleanVar(value=settings['show_prompt_cost'])
+auto_var = tk.BooleanVar(value=settings['auto_load_last_project'])
+settings_menu.add_checkbutton(label='Show prompt cost', variable=cost_var,
+                               command=lambda: apply_setting(cost_var, 'show_prompt_cost', True))
+settings_menu.add_checkbutton(label='Auto-load last project', variable=auto_var,
+                               command=lambda: apply_setting(auto_var, 'auto_load_last_project'))
+theme_choice = tk.StringVar(value=settings.get('theme', 'darkly'))
+theme_menu = tk.Menu(settings_menu, tearoff=False)
+for theme in ['darkly', 'flatly']:
+    theme_menu.add_radiobutton(label=theme, value=theme, variable=theme_choice)
+settings_menu.add_cascade(label='Theme', menu=theme_menu)
 
-# ----- Prompt Tab -----
-prompt_tab = ttk.Frame(tabs, padding=10)
-tabs.add(prompt_tab, text='Prompt')
+def show_settings(event=None):
+    settings_menu.tk_popup(settings_btn.winfo_rootx(), settings_btn.winfo_rooty()+settings_btn.winfo_height())
 
-prompt_entry = tk.Text(prompt_tab, height=6, wrap='word')
-prompt_entry.pack(side='left', fill='both', expand=True, padx=5, pady=5)
-prompt_scroll = ttk.Scrollbar(prompt_tab, command=prompt_entry.yview)
+settings_btn.config(command=show_settings)
+def change_theme(*_):
+    style.theme_use(theme_choice.get())
+    settings['theme'] = theme_choice.get()
+    save_settings()
+
+def apply_setting(var, key, refresh=False):
+    settings[key] = var.get()
+    save_settings()
+    if refresh:
+        update_usage_display()
+
+theme_choice.trace_add('write', change_theme)
+
+main_frame = ttk.Frame(app)
+main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+
+# ----- Prompt Area -----
+prompt_frame = ttk.LabelFrame(main_frame, text='Prompt', padding=10)
+prompt_frame.pack(fill='both', expand=True)
+
+prompt_entry = tk.Text(prompt_frame, height=6, wrap='word')
+prompt_entry.pack(fill='both', expand=True, padx=5, pady=5)
+prompt_scroll = ttk.Scrollbar(prompt_frame, command=prompt_entry.yview)
 prompt_scroll.pack(side='right', fill='y')
 prompt_entry.configure(yscrollcommand=prompt_scroll.set)
 
-option_frame = ttk.Frame(prompt_tab, padding=10)
+option_frame = ttk.Frame(prompt_frame, padding=5)
 option_frame.pack(fill='x')
 task_var = tk.StringVar(value='Custom')
 task_dropdown = ttk.Combobox(option_frame, textvariable=task_var, state='readonly')
@@ -571,20 +618,21 @@ model_dropdown.pack(side='left', padx=10)
 ask_btn = ttk.Button(option_frame, text='🤖 Ask', command=generate_response)
 ask_btn.pack(side='left', padx=10)
 
-# ----- Response Tab -----
-response_tab = ttk.Frame(tabs, padding=10)
-tabs.add(response_tab, text='Response')
-response_frame = ttk.Frame(response_tab)
-response_frame.pack(fill='both', expand=True)
+# ----- Response Area -----
+response_frame = ttk.LabelFrame(main_frame, text='Response', padding=10)
+response_frame.pack(fill='both', expand=True, pady=(10, 0))
 output_text = tk.Text(response_frame, wrap='word')
 output_text.pack(side='left', fill='both', expand=True)
 output_scroll = ttk.Scrollbar(response_frame, command=output_text.yview)
 output_scroll.pack(side='right', fill='y')
 output_text.configure(yscrollcommand=output_scroll.set)
-copy_btn = ttk.Button(response_tab, text='📋 Copy', command=lambda: app.clipboard_append(output_text.get('1.0', tk.END)))
+copy_btn = ttk.Button(response_frame, text='📋 Copy', command=lambda: app.clipboard_append(output_text.get('1.0', tk.END)))
 copy_btn.pack(pady=5, anchor='e')
 
-# ----- Generated Files Tab -----
+# ----- Extra Tabs -----
+tabs = ttk.Notebook(main_frame)
+tabs.pack(fill='both', expand=True, pady=(10, 0))
+
 generated_tab = ttk.Frame(tabs, padding=10)
 tabs.add(generated_tab, text='Generated Files')
 gen_canvas = tk.Canvas(generated_tab)
@@ -608,39 +656,6 @@ history_text.pack(side='left', fill='both', expand=True)
 history_scroll = ttk.Scrollbar(history_tab, command=history_text.yview)
 history_scroll.pack(side='right', fill='y')
 history_text.configure(yscrollcommand=history_scroll.set)
-
-# ----- Settings Tab -----
-settings_tab = ttk.Frame(tabs, padding=10)
-tabs.add(settings_tab, text='Settings')
-use_context_cb = ttk.Checkbutton(settings_tab, text='Use project context', variable=use_context_var)
-use_context_cb.pack(anchor='w', padx=10, pady=5)
-history_cb = ttk.Checkbutton(settings_tab, text='Include chat history', variable=include_history_var)
-history_cb.pack(anchor='w', padx=10, pady=5)
-cost_var = tk.BooleanVar(value=settings['show_prompt_cost'])
-auto_var = tk.BooleanVar(value=settings['auto_load_last_project'])
-theme_choice = tk.StringVar(value=settings.get('theme', 'darkly'))
-
-def apply_setting(var, key, refresh=False):
-    settings[key] = var.get()
-    save_settings()
-    if refresh:
-        update_usage_display()
-
-ttk.Checkbutton(settings_tab, text='Show individual prompt cost', variable=cost_var,
-                command=lambda: apply_setting(cost_var, 'show_prompt_cost', True)).pack(anchor='w', padx=10, pady=5)
-ttk.Checkbutton(settings_tab, text='Auto-load last project on startup', variable=auto_var,
-                command=lambda: apply_setting(auto_var, 'auto_load_last_project')).pack(anchor='w', padx=10, pady=5)
-
-theme_combo = ttk.Combobox(settings_tab, textvariable=theme_choice, state='readonly', width=12)
-theme_combo['values'] = ['darkly', 'flatly']
-theme_combo.pack(anchor='w', padx=10, pady=5)
-
-def change_theme(*_):
-    style.theme_use(theme_choice.get())
-    settings['theme'] = theme_choice.get()
-    save_settings()
-
-theme_choice.trace_add('write', change_theme)
 
 footer = ttk.Frame(app, padding=5)
 footer.pack(side='bottom', fill='x')
