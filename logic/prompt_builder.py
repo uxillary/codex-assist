@@ -3,6 +3,7 @@ from typing import Tuple
 
 from utils import approx_tokens
 from context import AppContext
+from logging_bus import emit
 
 
 def build_prompt(ctx: AppContext, user_prompt: str) -> Tuple[str, bool]:
@@ -25,6 +26,8 @@ def build_prompt(ctx: AppContext, user_prompt: str) -> Tuple[str, bool]:
             parts = ['context'] + parts
         if trimmed:
             parts.append('Context trimmed to fit within limits.')
+            emit('WARN', 'BUILD', 'Context truncated', max_tokens=3000, tokens=token_total)
+        emit('INFO', 'BUILD', 'Collected project context', files=len(ctx.context_summary), tokens=token_total)
     if ctx.settings.get('include_history'):
         try:
             with open(ctx.history_path, 'r', encoding='utf-8') as f:
