@@ -54,12 +54,15 @@ class ActivityConsole(tk.Frame):
 
         tk.Button(tb, text="Pause", command=self._toggle_pause).pack(side="right")
         tk.Button(tb, text="Copy", command=self._copy).pack(side="right")
-        tk.Button(tb, text="Clear", command=self._clear).pack(side="right")
+        tk.Button(tb, text="Clear Log", command=self._clear).pack(side="right")
         tk.Button(tb, text="Save…", command=self._save).pack(side="right")
         tk.Button(tb, text="Log File…", command=self._choose_file).pack(side="right")
 
         self.text = tk.Text(self, wrap="word", height=12, state="disabled")
-        self.text.pack(fill="both", expand=True)
+        scroll = tk.Scrollbar(self, orient="vertical", command=self.text.yview)
+        self.text.configure(yscrollcommand=scroll.set)
+        self.text.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
         self.text.tag_config("INFO", foreground="black")
         self.text.tag_config("WARN", foreground="orange")
         self.text.tag_config("ERROR", foreground="red")

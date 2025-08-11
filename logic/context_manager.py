@@ -4,6 +4,7 @@ from typing import Callable, Dict
 
 from services.openai_helper import send_prompt
 from utils import file_hash
+from logging_bus import emit
 
 
 def load_summary_cache(folder: str) -> Dict[str, dict]:
@@ -42,6 +43,7 @@ def summarize_file(path: str) -> str:
 def scan_folder(folder: str, context, progress: Callable[[int, bool], None] | None = None) -> None:
     summary_cache = load_summary_cache(folder)
     context.context_summary = {}
+    summaries = []
     for root, _, files in os.walk(folder):
         for name in files:
             if not name.lower().endswith(('.py', '.md', '.txt', '.json')):
@@ -58,12 +60,19 @@ def scan_folder(folder: str, context, progress: Callable[[int, bool], None] | No
             if cached and cached.get('hash') == h:
                 summary = cached['summary']
             else:
+                emit('INFO', 'SYSTEM', f'Scanning {rel}')
                 summary = summarize_file(path)
                 summary_cache[rel] = {'hash': h, 'summary': summary}
             context.context_summary[rel] = summary
+            summaries.append(summary)
             if progress:
                 progress(len(context.context_summary), False)
+            emit('INFO', 'SYSTEM', f'Summarized {len(context.context_summary)} files')
     save_summary_cache(folder, summary_cache)
+    if summaries:
+        prompt = 'Create a short project overview from these file summaries:\n' + '\n'.join(summaries)
+        overview, _ = send_prompt(prompt)
+        context.project_overview = overview.strip()
     if progress:
         progress(len(context.context_summary), True)
 

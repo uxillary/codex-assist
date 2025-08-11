@@ -33,10 +33,22 @@ def create_tab(ctx, parent):
 
     response_frame = ttk.LabelFrame(frame, text='Response', padding=10)
     response_frame.pack(fill='both', expand=True, pady=(10, 0))
-    response_text = tk.Text(response_frame, wrap='word', height=10)
+    text_container = ttk.Frame(response_frame)
+    text_container.pack(fill='both', expand=True)
+    response_text = tk.Text(text_container, wrap='word', height=10)
+    scroll = ttk.Scrollbar(text_container, orient='vertical', command=response_text.yview)
+    response_text.configure(yscrollcommand=scroll.set)
     response_text.pack(side='left', fill='both', expand=True)
-    copy_btn = ttk.Button(response_frame, text='📋 Copy', command=lambda: frame.clipboard_append(response_text.get('1.0', tk.END)))
-    copy_btn.pack(pady=5, anchor='e')
+    scroll.pack(side='right', fill='y')
+    btn_bar = ttk.Frame(response_frame)
+    btn_bar.pack(fill='x', pady=5)
+    copy_btn = ttk.Button(btn_bar, text='Copy', command=lambda: frame.clipboard_append(response_text.get('1.0', tk.END)))
+    copy_btn.pack(side='left', padx=2)
+    clear_btn = ttk.Button(btn_bar, text='Clear', command=lambda: response_text.delete('1.0', tk.END))
+    clear_btn.pack(side='left', padx=2)
+    cancel_btn = ttk.Button(btn_bar, text='Cancel')
+    cancel_btn.pack(side='left', padx=2)
+    cancel_btn.pack_forget()
 
     return {
         'frame': frame,
@@ -46,6 +58,7 @@ def create_tab(ctx, parent):
         'token_var': token_var,
         'model_var': model_var,
         'task_var': task_var,
+        'cancel_btn': cancel_btn,
     }
 
 

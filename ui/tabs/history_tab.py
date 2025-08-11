@@ -6,7 +6,10 @@ from tkinter import ttk
 def create_tab(ctx, parent):
     frame = ttk.Frame(parent, padding=10)
     history_text = tk.Text(frame, wrap='word', state='disabled')
+    scroll = ttk.Scrollbar(frame, orient='vertical', command=history_text.yview)
+    history_text.configure(yscrollcommand=scroll.set)
     history_text.pack(side='left', fill='both', expand=True)
+    scroll.pack(side='right', fill='y')
 
     def refresh():
         try:
