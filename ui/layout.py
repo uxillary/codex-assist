@@ -43,8 +43,6 @@ def launch_ui(ctx):
     for b in (new_btn, load_btn, save_btn, folder_btn):
         b.pack(side='left', padx=2)
     progress = ttk.Progressbar(project_frame, mode='indeterminate', length=120)
-    settings_btn = create_settings_panel(ctx, project_frame, style)
-    settings_btn.pack(side='right')
 
     # Main layout
     main_frame = ttk.Frame(app)
@@ -64,6 +62,9 @@ def launch_ui(ctx):
     right_tabs.add(files_tab, text='Generated Files')
     hist_tab, refresh_history = create_history_tab(ctx, right_tabs)
     right_tabs.add(hist_tab, text='History')
+
+    settings_btn = create_settings_panel(ctx, project_frame, style, refresh_history)
+    settings_btn.pack(side='right')
 
     status_bar = StatusBar(app)
     console = ActivityConsole(app, ctx)
