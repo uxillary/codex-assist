@@ -23,6 +23,8 @@ def new_project(ctx, name: str) -> Path:
     ctx.active_project = str(folder)
     ctx.settings['last_project'] = str(folder)
     set_project_dir(str(folder))
+    ctx.history_path = str(folder / 'history.json')
+    ctx.turn_summaries_path = str(folder / 'turn_summaries.json')
     return folder
 
 
@@ -31,6 +33,8 @@ def load_project(ctx, file_path: str) -> None:
     ctx.active_project = str(folder)
     ctx.settings['last_project'] = str(folder)
     set_project_dir(str(folder))
+    ctx.history_path = str(folder / 'history.json')
+    ctx.turn_summaries_path = str(folder / 'turn_summaries.json')
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)

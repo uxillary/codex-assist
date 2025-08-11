@@ -42,6 +42,7 @@ def launch_ui(ctx):
     folder_btn = ttk.Button(project_frame, text='🗂️ Load Folder')
     for b in (new_btn, load_btn, save_btn, folder_btn):
         b.pack(side='left', padx=2)
+    progress = ttk.Progressbar(project_frame, mode='indeterminate', length=120)
     settings_btn = create_settings_panel(ctx, project_frame, style)
     settings_btn.pack(side='right')
 
@@ -71,7 +72,7 @@ def launch_ui(ctx):
         console.show()
     emit('INFO', 'SYSTEM', 'Activity console started')
 
-    events = UIEvents(ctx, resp_widgets, lambda files: files_update(files), status_bar, refresh_history)
+    events = UIEvents(ctx, resp_widgets, lambda files: files_update(files), status_bar, refresh_history, app, folder_btn, progress)
     new_btn.config(command=events.new_project)
     load_btn.config(command=events.load_project)
     save_btn.config(command=events.save_project_as)

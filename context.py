@@ -6,6 +6,9 @@ class AppContext:
             'show_prompt_cost': True,
             'auto_load_last_project': True,
             'include_history': False,
+            'use_turn_summaries': True,
+            'context_tier': 'Standard',
+            'detailed_files': [],
             'theme': 'darkly',
             'last_project': '',
             'verbose': True,
@@ -16,8 +19,10 @@ class AppContext:
         self.total_tokens = 0
         self.active_project = ''
         self.context_summary = {}
+        self.project_overview = ''
         self.generated_files = []
         self.history_path = 'data/history.json'
+        self.turn_summaries_path = 'data/turn_summaries.json'
         self.settings_path = 'data/settings.json'
         self.summaries_path = 'data/summaries.json'
         self.project_file = 'data/active_project.codexproj'
