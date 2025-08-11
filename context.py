@@ -7,6 +7,8 @@ class AppContext:
             'auto_load_last_project': True,
             'include_history': False,
             'use_turn_summaries': True,
+            'use_conversation_memory': True,
+            'recent_turns_count': 2,
             'context_tier': 'Standard',
             'detailed_files': [],
             'theme': 'darkly',
