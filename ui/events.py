@@ -46,11 +46,20 @@ class UIEvents:
         response_widget.delete('1.0', tk.END)
         tok_count = approx_tokens(final_prompt)
         self.widgets['token_var'].set(f"Estimated prompt tokens: {tok_count}")
-        emit('INFO', 'BUILD', 'Token count', tokens=tok_count)
+        self.widgets['context_var'].set(
+            f"Context: {self.ctx.settings.get('context_tier', 'Standard')} + "
+            f"{'memory' if self.ctx.settings.get('use_conversation_memory', True) else 'no memory'} + "
+            f"{self.ctx.settings.get('recent_turns_count', 2)} turns (~{tok_count} tokens)"
+        )
+        emit('INFO', 'BUILD', 'Context',
+             repo=self.ctx.settings.get('use_project_context'),
+             memory=self.ctx.settings.get('use_conversation_memory', True),
+             turns=self.ctx.settings.get('recent_turns_count', 2),
+             est_in_tokens=tok_count)
+        status_txt = 'Thinking…'
         if trimmed:
-            self.status_bar.set_status('⚠️ Context trimmed to fit within limits.')
-        else:
-            self.status_bar.set_status('💬 Thinking... please wait.')
+            status_txt += ' (Context trimmed)'
+        self.status_bar.set_status(status_txt)
         model = self.widgets['model_var'].get()
         buffer = []
         self.cancel_stream = False
@@ -100,6 +109,11 @@ class UIEvents:
         est_prompt, _ = prompt_builder.build_prompt(self.ctx, prompt)
         tokens = approx_tokens(est_prompt)
         self.widgets['token_var'].set(f"Estimated prompt tokens: {tokens}")
+        self.widgets['context_var'].set(
+            f"Context: {self.ctx.settings.get('context_tier', 'Standard')} + "
+            f"{'memory' if self.ctx.settings.get('use_conversation_memory', True) else 'no memory'} + "
+            f"{self.ctx.settings.get('recent_turns_count', 2)} turns (~{tokens} tokens)"
+        )
 
     def cancel_streaming(self):
         self.cancel_stream = True

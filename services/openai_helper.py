@@ -17,16 +17,23 @@ PROJECT_DIR = BASE_DIR
 USAGE_FILE = PROJECT_DIR / "usage.json"
 HISTORY_FILE = PROJECT_DIR / "history.json"
 TURN_SUMMARIES_FILE = PROJECT_DIR / "turn_summaries.json"
+RUNNING_SUMMARY_FILE = PROJECT_DIR / "running_summary.txt"
 
 
 def set_project_dir(path: str) -> None:
     """Set file paths for usage, history and summaries under a project directory."""
-    global PROJECT_DIR, USAGE_FILE, HISTORY_FILE, TURN_SUMMARIES_FILE, usage_data
+    global PROJECT_DIR, USAGE_FILE, HISTORY_FILE, TURN_SUMMARIES_FILE, RUNNING_SUMMARY_FILE, usage_data
     PROJECT_DIR = Path(path)
     PROJECT_DIR.mkdir(parents=True, exist_ok=True)
     USAGE_FILE = PROJECT_DIR / "usage.json"
     HISTORY_FILE = PROJECT_DIR / "history.json"
     TURN_SUMMARIES_FILE = PROJECT_DIR / "turn_summaries.json"
+    RUNNING_SUMMARY_FILE = PROJECT_DIR / "running_summary.txt"
+    if not RUNNING_SUMMARY_FILE.exists():
+        try:
+            RUNNING_SUMMARY_FILE.write_text("", encoding="utf-8")
+        except Exception:
+            pass
     usage_data = _load_json(
         USAGE_FILE,
         {
@@ -80,6 +87,38 @@ def _record_history(entry: dict) -> None:
             json.dump(data, f, indent=2)
     except Exception:
         pass
+
+
+def update_running_summary(project_dir: Path, last_prompt: str, last_answer: str) -> None:
+    """Update running conversation summary with a new turn."""
+    summary_path = project_dir / "running_summary.txt"
+    try:
+        with open(summary_path, "r", encoding="utf-8") as f:
+            old = f.read().strip()
+    except Exception:
+        old = ""
+    prompt = (
+        "Update this running conversation summary (<= 2 sentences) with the new exchange.\n\n"
+        f"Current summary:\n{old}\n\nLatest:\nUser: {last_prompt}\nAssistant: {last_answer}\n\n"
+        "Return only the updated 1\u20132 sentence summary."
+    )
+    try:
+        resp = client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful coding assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=60,
+        )
+        summary = resp.choices[0].message.content.strip()
+        summary_path.write_text(summary, encoding="utf-8")
+    except Exception:
+        try:
+            summary_path.write_text(old, encoding="utf-8")
+        except Exception:
+            pass
 
 
 def save_turn_summary(text: str) -> None:
@@ -155,6 +194,7 @@ def stream_chat(
                     "cost": cost,
                 }
             )
+            update_running_summary(PROJECT_DIR, prompt_text, full_text)
         emit("INFO", "STREAM", "Done")
         on_done(full_text, usage)
     except Exception as e:
@@ -204,6 +244,7 @@ def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
             "tokens": usage.total_tokens,
             "cost": cost,
         })
+        update_running_summary(PROJECT_DIR, prompt_text, message)
         return message, usage
     except Exception as e:
         emit("ERROR", "NETWORK", "HTTP error", error=str(e))
@@ -237,5 +278,6 @@ __all__ = [
     "set_project_dir",
     "stream_chat",
     "save_turn_summary",
+    "update_running_summary",
 ]
 

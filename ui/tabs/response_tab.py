@@ -31,6 +31,10 @@ def create_tab(ctx, parent):
     token_label = ttk.Label(option_frame, textvariable=token_var)
     token_label.pack(side='right')
 
+    context_var = tk.StringVar(value='Context:')
+    context_label = ttk.Label(prompt_frame, textvariable=context_var)
+    context_label.pack(fill='x', anchor='w')
+
     response_frame = ttk.LabelFrame(frame, text='Response', padding=10)
     response_frame.pack(fill='both', expand=True, pady=(10, 0))
     text_container = ttk.Frame(response_frame)
@@ -56,6 +60,7 @@ def create_tab(ctx, parent):
         'response_text': response_text,
         'ask_btn': ask_btn,
         'token_var': token_var,
+        'context_var': context_var,
         'model_var': model_var,
         'task_var': task_var,
         'cancel_btn': cancel_btn,

@@ -12,6 +12,8 @@ def create_settings_panel(ctx, root, style: Style):
     include_hist = tk.BooleanVar(value=ctx.settings.get('include_history', False))
     show_cost = tk.BooleanVar(value=ctx.settings.get('show_prompt_cost', True))
     use_turn_summaries = tk.BooleanVar(value=ctx.settings.get('use_turn_summaries', True))
+    use_memory = tk.BooleanVar(value=ctx.settings.get('use_conversation_memory', True))
+    recent_turns = tk.IntVar(value=ctx.settings.get('recent_turns_count', 2))
     context_tier = tk.StringVar(value=ctx.settings.get('context_tier', 'Standard'))
 
     def _apply_settings():
@@ -20,11 +22,24 @@ def create_settings_panel(ctx, root, style: Style):
         ctx.settings['show_prompt_cost'] = show_cost.get()
         ctx.settings['use_turn_summaries'] = use_turn_summaries.get()
         ctx.settings['context_tier'] = context_tier.get()
+        ctx.settings['use_conversation_memory'] = use_memory.get()
+        ctx.settings['recent_turns_count'] = int(recent_turns.get())
 
     settings_menu.add_checkbutton(label='Use project context', variable=use_ctx, command=_apply_settings)
     settings_menu.add_checkbutton(label='Include chat history', variable=include_hist, command=_apply_settings)
     settings_menu.add_checkbutton(label='Use turn summaries', variable=use_turn_summaries, command=_apply_settings)
+    settings_menu.add_checkbutton(label='Use conversation memory', variable=use_memory, command=_apply_settings)
     settings_menu.add_checkbutton(label='Show prompt cost', variable=show_cost, command=_apply_settings)
+
+    def _recent_turns_dialog():
+        win = tk.Toplevel(root)
+        win.title('Recent full turns')
+        tk.Label(win, text='Recent full turns:').pack(padx=10, pady=5)
+        spin = tk.Spinbox(win, from_=0, to=5, textvariable=recent_turns, width=5)
+        spin.pack(padx=10, pady=5)
+        tk.Button(win, text='OK', command=lambda: [ _apply_settings(), win.destroy() ]).pack(pady=5)
+
+    settings_menu.add_command(label='Recent full turns', command=_recent_turns_dialog)
 
     tier_menu = tk.Menu(settings_menu, tearoff=False)
     for tier in ['Basic', 'Standard', 'Detailed']:
