@@ -21,6 +21,7 @@ This roadmap outlines how to evolve the local Codex Desktop Assistant into a pow
 **Goal:** Allow the assistant to scan and selectively read from local files or directories.
 
 **Steps:**
+
 - Add “Select Folder” button
 - Use `os.walk()` to read `.py`, `.md`, `.json`, etc.
 - Populate a list or tree view of files
@@ -33,6 +34,7 @@ This roadmap outlines how to evolve the local Codex Desktop Assistant into a pow
 **Goal:** Make Codex actively part of your Git workflow.
 
 **Steps:**
+
 - Auto-stage files or let user choose modified files
 - Button: “Generate commit message”
 - Button: “Generate PR description”
@@ -45,6 +47,7 @@ This roadmap outlines how to evolve the local Codex Desktop Assistant into a pow
 **Goal:** Let Codex suggest multiple file outputs at once.
 
 **Steps:**
+
 - Prompt with: “Create 3 files for a FastAPI app”
 - Layout: Output each file in a separate tab or section
 - Include: “Copy” or “Save to File” buttons for each
@@ -56,6 +59,7 @@ This roadmap outlines how to evolve the local Codex Desktop Assistant into a pow
 **Goal:** Add pseudo-memory by summarizing project files.
 
 **Steps:**
+
 - Run Codex: “Summarize this file in 1 sentence”
 - Save file summaries in `summaries.json`
 - Include summaries when prompting Codex for help with repo-level decisions
@@ -67,6 +71,7 @@ This roadmap outlines how to evolve the local Codex Desktop Assistant into a pow
 **Goal:** Track per-session and per-project token and cost usage.
 
 **Steps:**
+
 - Add session summary bar
 - Save historical logs: `session_log.json`
 - Display: total prompts, tokens, estimated cost
@@ -78,6 +83,7 @@ This roadmap outlines how to evolve the local Codex Desktop Assistant into a pow
 **Goal:** Add task-specific tools built around Codex.
 
 Tools:
+
 - Generate README.md
 - Auto-generate test cases for selected file
 - Create `.env.example` from `.env`
@@ -106,6 +112,7 @@ Tools:
 ## 📌 Current Priority Recommendation
 
 **Start with:**
+
 1. Local file reader + preview panel
 2. “Generate README.md” button
 3. Git commit message + PR message generator
