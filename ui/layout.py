@@ -8,6 +8,8 @@ from ui.tabs.response_tab import create_tab as create_response_tab
 from ui.tabs.history_tab import create_tab as create_history_tab
 from ui.tabs.files_tab import create_tab as create_files_tab
 from ui.events import UIEvents
+from console_widget import ActivityConsole
+from logging_bus import emit
 
 
 def launch_ui(ctx):
@@ -15,6 +17,20 @@ def launch_ui(ctx):
     app.title('Codex Desktop Assistant')
     app.geometry('900x600')
     style = Style(ctx.settings.get('theme', 'darkly'))
+
+    menubar = tk.Menu(app)
+    view_menu = tk.Menu(menubar, tearoff=False)
+    show_console_var = tk.BooleanVar(value=ctx.settings.get('activity_console_visible', True))
+    def _toggle_console():
+        if show_console_var.get():
+            console.show()
+        else:
+            console.hide()
+        ctx.settings['activity_console_visible'] = show_console_var.get()
+        ctx.save_settings()
+    view_menu.add_checkbutton(label='Activity Console', variable=show_console_var, command=_toggle_console)
+    menubar.add_cascade(label='View', menu=view_menu)
+    app.config(menu=menubar)
 
     # Project controls
     project_frame = ttk.LabelFrame(app, text='Project Controls', padding=10)
@@ -49,6 +65,11 @@ def launch_ui(ctx):
     right_tabs.add(hist_tab, text='History')
 
     status_bar = StatusBar(app)
+    console = ActivityConsole(app, ctx)
+    console.apply_settings(ctx.settings)
+    if ctx.settings.get('activity_console_visible', True):
+        console.show()
+    emit('INFO', 'SYSTEM', 'Activity console started')
 
     events = UIEvents(ctx, resp_widgets, lambda files: files_update(files), status_bar, refresh_history)
     new_btn.config(command=events.new_project)

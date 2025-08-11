@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
+from logging_bus import emit
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -87,6 +88,8 @@ def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
     """Send a prompt to OpenAI and record history and usage."""
     if len(prompt_text) > 10_000:
         return "[ERROR] Prompt too long. Try disabling project context.", None
+    emit("INFO", "NETWORK", "Sending request", model=model, task=task)
+    start = time.time()
     try:
         response = client.chat.completions.create(
             model=model,
@@ -97,9 +100,19 @@ def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
             temperature=0.7,
             max_tokens=500,
         )
+        latency_ms = int((time.time() - start) * 1000)
         message = response.choices[0].message.content.strip()
         usage = response.usage
         cost = estimate_cost(usage, model)
+        emit(
+            "INFO",
+            "COST",
+            "Estimated cost",
+            input_tokens=usage.prompt_tokens,
+            output_tokens=usage.completion_tokens,
+            usd=round(cost, 4),
+        )
+        emit("INFO", "SYSTEM", "Request complete", latency_ms=latency_ms)
         usage_data["session_tokens"] += usage.total_tokens
         usage_data["session_cost"] += cost
         usage_data["total_tokens"] += usage.total_tokens
@@ -116,6 +129,7 @@ def send_prompt(prompt_text: str, model: str = DEFAULT_MODEL, task: str = ""):
         })
         return message, usage
     except Exception as e:
+        emit("ERROR", "NETWORK", "HTTP error", error=str(e))
         _record_history({
             "ts": time.time(),
             "model": model,

@@ -5,6 +5,7 @@ from tkinter import filedialog, simpledialog, messagebox
 from services.openai_helper import send_prompt, estimate_cost
 from logic import prompt_builder, file_generator, context_manager, project_manager
 from utils import approx_tokens
+from logging_bus import emit
 
 
 class UIEvents:
@@ -39,6 +40,7 @@ class UIEvents:
         response_widget.delete('1.0', tk.END)
         tok_count = approx_tokens(final_prompt)
         self.widgets['token_var'].set(f"Estimated prompt tokens: {tok_count}")
+        emit('INFO', 'BUILD', 'Token count', tokens=tok_count)
         if trimmed:
             self.status_bar.set_status('⚠️ Context trimmed to fit within limits.')
         else:
