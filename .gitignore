@@ -49,3 +49,5 @@ codex_projects/goblin/project_summary.txt
 codex_projects/emoji/running_summary.txt
 /codex_projects
 /services
+data/history.json
+data/running_summary.txt
