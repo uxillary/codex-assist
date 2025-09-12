@@ -1,6 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
-from ttkbootstrap import Style
+from ttkbootstrap import Window, ttk
 
 from ui.status_bar import StatusBar
 from ui.settings_panel import create_settings_panel
@@ -13,10 +12,10 @@ from logging_bus import emit
 
 
 def launch_ui(ctx):
-    app = tk.Tk()
+    app = Window(themename=ctx.settings.get('theme', 'darkly'))
     app.title('Codex Desktop Assistant')
     app.geometry('900x600')
-    style = Style(ctx.settings.get('theme', 'darkly'))
+    style = app.style
 
     menubar = tk.Menu(app)
     view_menu = tk.Menu(menubar, tearoff=False)
@@ -33,16 +32,16 @@ def launch_ui(ctx):
     app.config(menu=menubar)
 
     # Project controls
-    project_frame = ttk.LabelFrame(app, text='Project Controls', padding=10)
+    project_frame = ttk.LabelFrame(app, text='Project Controls', padding=10, bootstyle='secondary')
     project_frame.pack(fill='x', padx=10, pady=10)
     # Buttons
-    new_btn = ttk.Button(project_frame, text='🆕 New Project')
-    load_btn = ttk.Button(project_frame, text='📂 Load Project')
-    save_btn = ttk.Button(project_frame, text='💾 Save Project As')
-    folder_btn = ttk.Button(project_frame, text='🗂️ Load Folder')
+    new_btn = ttk.Button(project_frame, text='🆕 New Project', bootstyle='primary')
+    load_btn = ttk.Button(project_frame, text='📂 Load Project', bootstyle='secondary')
+    save_btn = ttk.Button(project_frame, text='💾 Save Project As', bootstyle='info')
+    folder_btn = ttk.Button(project_frame, text='🗂️ Load Folder', bootstyle='warning')
     for b in (new_btn, load_btn, save_btn, folder_btn):
         b.pack(side='left', padx=2)
-    progress = ttk.Progressbar(project_frame, mode='indeterminate', length=120)
+    progress = ttk.Progressbar(project_frame, mode='indeterminate', length=120, bootstyle='info')
 
     # Main layout
     main_frame = ttk.Frame(app)
