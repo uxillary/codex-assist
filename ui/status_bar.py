@@ -1,4 +1,5 @@
 import tkinter as tk
+from ttkbootstrap import ttk
 from services.openai_helper import get_usage
 
 
@@ -6,10 +7,10 @@ class StatusBar:
     def __init__(self, root):
         self.status_var = tk.StringVar()
         self.usage_var = tk.StringVar()
-        frame = tk.Frame(root)
+        frame = ttk.Frame(root, bootstyle='secondary', padding=5)
         frame.pack(side='bottom', fill='x')
-        tk.Label(frame, textvariable=self.status_var).pack(side='left', padx=10)
-        tk.Label(frame, textvariable=self.usage_var).pack(side='right', padx=10)
+        ttk.Label(frame, textvariable=self.status_var).pack(side='left', padx=10)
+        ttk.Label(frame, textvariable=self.usage_var).pack(side='right', padx=10)
 
     def set_status(self, text: str):
         self.status_var.set(text)
